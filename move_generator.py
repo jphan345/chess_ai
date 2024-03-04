@@ -26,7 +26,7 @@ class MoveGenerator:
 
     def generate_moves(self, captures_only=False):
         """Generates a list of legal moves in the current position.
-        Quiet moves (non captures) can be excluded for quiescence search."""
+        Non capture moves can be excluded for quiescence search."""
         self.white_to_move = self.board.white_to_move
         self.friendly_color = self.board.friendly_color
         self.opponent_color = self.board.opponent_color
@@ -41,12 +41,11 @@ class MoveGenerator:
 
         self.calculate_attack_data()
 
-        generate_quiet_moves = not captures_only
         moves = []
 
         king_square = self.board.king_square[self.friendly_color]
         king_piece = self.board.board[king_square]
-        moves += self.generate_king_moves(king_square, king_piece)
+        moves += self.generate_king_moves(king_square, king_piece, captures_only=captures_only)
 
         # if there is a double check only the king can move
         if not self.in_double_check:
@@ -56,15 +55,15 @@ class MoveGenerator:
                 piece_color = Color.get_piece_color(piece)
                 if piece_color == self.friendly_color:
                     if piece_type in [Piece.ROOK, Piece.BISHOP, Piece.QUEEN]:
-                        moves += self.generate_sliding_moves(square, piece)
+                        moves += self.generate_sliding_moves(square, piece, captures_only=captures_only)
                     elif piece_type == Piece.PAWN:
-                        moves += self.generate_pawn_moves(square, piece)
+                        moves += self.generate_pawn_moves(square, piece, captures_only=captures_only)
                     elif piece_type == Piece.KNIGHT:
-                        moves += self.generate_knight_moves(square, piece)
+                        moves += self.generate_knight_moves(square, piece, captures_only=captures_only)
 
         return moves
 
-    def generate_king_moves(self, start_square, piece):
+    def generate_king_moves(self, start_square, piece, captures_only=False):
         file = BoardHelper.get_file(start_square)
         king_offsets = [Offset.LEFT, Offset.TOP_LEFT, Offset.BOTTOM_LEFT, Offset.DOWN, Offset.UP, Offset.RIGHT,
                         Offset.BOTTOM_RIGHT, Offset.TOP_RIGHT]
@@ -81,13 +80,16 @@ class MoveGenerator:
                 target_piece = self.board.board[target_square]
                 target_piece_type = Piece.get_piece_type(target_piece)
                 target_piece_color = Color.get_piece_color(target_piece)
-                if target_piece_type == Piece.NONE or target_piece_color == self.opponent_color:
+                if target_piece_type == Piece.NONE and not captures_only:
                     # king cannot move into a square that would put it under attack
                     if target_square not in self.opponent_attack_squares:
                         moves.append(Move(start_square, target_square))
+                elif target_piece_type != Piece.NONE and target_piece_color == self.opponent_color:
+                    if target_square not in self.opponent_attack_squares:
+                        moves.append(Move(start_square, target_square))
 
-        # can't castle if you are in check
-        if self.in_check:
+        # can't castle if you are in check or if we're generating captures only
+        if self.in_check or captures_only:
             return moves
 
         if self.friendly_color == Color.WHITE:
@@ -160,7 +162,20 @@ class MoveGenerator:
 
         return moves
 
-    def generate_pawn_moves(self, start_square, piece):
+    def generate_pawn_promotions(self, start_square, target_square, captures_only=False):
+        if captures_only:
+            return [Move(start_square, target_square, Move.PROMOTE_TO_QUEEN_FLAG)]
+
+        promotion_flags = [Move.PROMOTE_TO_QUEEN_FLAG, Move.PROMOTE_TO_ROOK_FLAG,
+                           Move.PROMOTE_TO_KNIGHT_FLAG, Move.PROMOTE_TO_BISHOP_FLAG]
+
+        moves = []
+        for flag in promotion_flags:
+            moves.append(Move(start_square, target_square, flag=flag))
+
+        return moves
+
+    def generate_pawn_moves(self, start_square, piece, captures_only=False):
         file = BoardHelper.get_file(start_square)
         is_on_right_edge = file == 7
         is_on_left_edge = file == 0
@@ -174,22 +189,20 @@ class MoveGenerator:
         moves = []
 
         # calculate forward moves
-        forward_offsets = [pawn_direction, pawn_direction * 2] if rank == pawn_starting_rank else [pawn_direction]
-        for offset in forward_offsets:
-            target_square = start_square + offset
-            target_piece = self.board.board[target_square]
-            target_piece_type = Piece.get_piece_type(target_piece)
+        if not captures_only:
+            forward_offsets = [pawn_direction, pawn_direction * 2] if rank == pawn_starting_rank else [pawn_direction]
+            for offset in forward_offsets:
+                target_square = start_square + offset
+                target_piece = self.board.board[target_square]
+                target_piece_type = Piece.get_piece_type(target_piece)
 
-            if target_piece_type == Piece.NONE:
-                # calculate promotion moves
-                if BoardHelper.get_rank(target_square) == pawn_promotion_rank:
-                    promotion_flags = [Move.PROMOTE_TO_QUEEN_FLAG, Move.PROMOTE_TO_ROOK_FLAG,
-                                       Move.PROMOTE_TO_KNIGHT_FLAG, Move.PROMOTE_TO_BISHOP_FLAG]
-                    for flag in promotion_flags:
+                if target_piece_type == Piece.NONE:
+                    # calculate promotion moves
+                    if BoardHelper.get_rank(target_square) == pawn_promotion_rank:
+                        moves += self.generate_pawn_promotions(start_square, target_square, captures_only=captures_only)
+                    else:
+                        flag = Move.NO_FLAG if offset == pawn_direction else Move.PAWN_TWO_UP_FLAG
                         moves.append(Move(start_square, target_square, flag=flag))
-                else:
-                    flag = Move.NO_FLAG if offset == pawn_direction else Move.PAWN_TWO_UP_FLAG
-                    moves.append(Move(start_square, target_square, flag=flag))
 
         # calculate attacking moves
         pawn_attacking_directions = [Offset.TOP_LEFT, Offset.TOP_RIGHT] if piece_color == Color.WHITE \
@@ -208,10 +221,7 @@ class MoveGenerator:
             if target_piece_type != Piece.NONE and target_piece_color == self.opponent_color:
                 # calculate promotion moves
                 if BoardHelper.get_rank(target_square) == pawn_promotion_rank:
-                    promotion_flags = [Move.PROMOTE_TO_QUEEN_FLAG, Move.PROMOTE_TO_ROOK_FLAG,
-                                       Move.PROMOTE_TO_KNIGHT_FLAG, Move.PROMOTE_TO_BISHOP_FLAG]
-                    for flag in promotion_flags:
-                        moves.append(Move(start_square, target_square, flag=flag))
+                    moves += self.generate_pawn_promotions(start_square, target_square, captures_only=captures_only)
                 else:
                     moves.append(Move(start_square, target_square))
 
@@ -243,7 +253,7 @@ class MoveGenerator:
 
         return self.filter_valid_moves(moves)
 
-    def generate_knight_moves(self, start_square, piece):
+    def generate_knight_moves(self, start_square, piece, captures_only=False):
         file = BoardHelper.get_file(start_square)
         knight_offsets = [6, -10, 15, -17, 17, -15, 10, -6]  # ordered from leftmost to rightmost moves
         if file == 0:
@@ -263,14 +273,14 @@ class MoveGenerator:
                 target_piece_type = Piece.get_piece_type(target_piece)
                 target_piece_color = Color.get_piece_color(target_piece)
 
-                if target_piece_type == Piece.NONE:
+                if target_piece_type == Piece.NONE and not captures_only:
                     moves.append(Move(start_square, target_square))
                 elif target_piece_type != Piece.NONE and target_piece_color == self.opponent_color:
                     moves.append(Move(start_square, target_square))
 
         return self.filter_valid_moves(moves)
 
-    def generate_sliding_moves(self, start_square, piece):
+    def generate_sliding_moves(self, start_square, piece, captures_only=False):
         piece_type = Piece.get_piece_type(piece)
 
         moves = []
@@ -295,7 +305,7 @@ class MoveGenerator:
                     elif target_piece_type != Piece.NONE and target_piece_color == self.opponent_color:
                         moves.append(Move(start_square, target_square))
                         break
-                    else:
+                    elif not captures_only:
                         moves.append(Move(start_square, target_square))
 
         return self.filter_valid_moves(moves)

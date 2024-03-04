@@ -67,6 +67,9 @@ def is_stalemate(board, moves):
 
 if __name__ == "__main__":
     board = Board()
+    board.board[BoardHelper.E2] = Piece.NONE
+    board.board[BoardHelper.F2] = Piece.NONE
+    board.board[BoardHelper.D2] = Piece.NONE
     mg = MoveGenerator(board)
     eval = Evaluation(board)
     search = Search(board)
@@ -76,8 +79,9 @@ if __name__ == "__main__":
 
         print(board)
         valid_moves = mg.generate_moves()
-        print(mg.friendly_color)
-        print([str(m) for m in valid_moves])
+        print(f"moves: {[str(m) for m in valid_moves]}")
+        capture_moves = mg.generate_moves(captures_only=True)
+        print(f"capture moves: {[str(m) for m in capture_moves]}")
 
         if is_stalemate(board, valid_moves):
             print("STALEMATE")

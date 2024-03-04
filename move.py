@@ -1,4 +1,4 @@
-from constants import Color, Piece
+from constants import *
 
 
 class Move:
@@ -54,8 +54,11 @@ class Move:
             Move.PROMOTE_TO_BISHOP_FLAG: "PROMOTE_TO_BISHOP_FLAG",
             Move.NO_FLAG: "NO_FLAG"
         }
+        files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+        start_square = files[BoardHelper.get_file(self.start_square)] + str(BoardHelper.get_rank(self.start_square) + 1)
+        target_square = files[BoardHelper.get_file(self.target_square)] + str(BoardHelper.get_rank(self.target_square) + 1)
 
-        return f"Move(start={self.start_square}, target={self.target_square}, flag={flags[self.flag]})"
+        return f"Move(start={start_square}, target={target_square}, flag={flags[self.flag]})"
 
     def __eq__(self, other):
         return other.value == self.value

@@ -18,9 +18,14 @@ class Search:
         self.best_move = None
         self.best_eval = Search.NEGATIVE_INFINITY
 
+        # for debugging/testing purposes
+        self.positions_evaluated = 0
+
     def start_search(self):
         self.best_move = None
         self.best_eval = Search.NEGATIVE_INFINITY
+
+        self.positions_evaluated = 0
 
         depth = 3
         moves = self.move_generator.generate_moves()
@@ -46,7 +51,7 @@ class Search:
 
     def search(self, depth, alpha, beta):
         if depth == 0:
-            return self.evaluation.evaluate()
+            return self.quiescence_search(alpha, beta)
 
         valid_moves = self.move_generator.generate_moves()
         self.order_moves(valid_moves)
@@ -64,8 +69,31 @@ class Search:
             if evaluation >= beta:
                 # if move is too good, opponent won't play the move so disregard it
                 return beta
-            if evaluation > alpha:
-                alpha = evaluation
+            alpha = max(alpha, evaluation)
+
+        return alpha
+
+    # TODO: add checks to quiescence search
+    def quiescence_search(self, alpha, beta):
+        """Keep searching if there are captures. The purpose is to only evaluate 'quiet' positions where
+        there are no captures possible."""
+        evaluation = self.evaluation.evaluate()
+
+        if evaluation >= beta:
+            return beta
+
+        alpha = max(alpha, evaluation)
+        valid_moves = self.move_generator.generate_moves(captures_only=True)
+        self.order_moves(valid_moves)
+
+        for move in valid_moves:
+            self.board.make_move(move)
+            evaluation = -1 * self.quiescence_search(-beta, -alpha)
+            self.board.unmake_move(move)
+
+            if evaluation >= beta:
+                return beta
+            alpha = max(alpha, evaluation)
 
         return alpha
 
@@ -83,12 +111,12 @@ class Search:
 
         if move.flag == Move.PROMOTE_TO_QUEEN_FLAG:
             move_score += Piece.QUEEN_VALUE
-        # elif move.flag == Move.PROMOTE_TO_ROOK_FLAG:
-        #     move_score += Piece.ROOK_VALUE
-        # elif move.flag == Move.PROMOTE_TO_BISHOP_FLAG:
-        #     move_score += Piece.BISHOP_VALUE
-        # elif move.flag == Move.PROMOTE_TO_KNIGHT_FLAG:
-        #     move_score += Piece.KNIGHT_VALUE
+        elif move.flag == Move.PROMOTE_TO_ROOK_FLAG:
+            move_score += Piece.ROOK_VALUE
+        elif move.flag == Move.PROMOTE_TO_BISHOP_FLAG:
+            move_score += Piece.BISHOP_VALUE
+        elif move.flag == Move.PROMOTE_TO_KNIGHT_FLAG:
+            move_score += Piece.KNIGHT_VALUE
 
         if move.target_square in self.move_generator.opponent_pawn_attack_squares:
             move_score -= Piece.get_piece_value(move_piece)
