@@ -239,7 +239,7 @@ class MoveGenerator:
             check_piece_type = Piece.get_piece_type(check_piece)
             check_piece_color = Color.get_piece_color(check_piece)
 
-            if self.board.en_passant_file[check_file] and check_piece_type != Piece.NONE and \
+            if self.board.en_passant_file == check_file and check_piece_type != Piece.NONE and \
                     check_piece_color == self.opponent_color:
                 on_passant_offset = 0
                 if offset == Offset.LEFT:

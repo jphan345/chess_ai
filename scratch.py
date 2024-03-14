@@ -20,6 +20,7 @@ def print_move(move):
 
     print(f"{ranks[start_rank]}{start_file} {ranks[target_rank]}{target_file}")
 
+
 def print_status(board, mg):
     print(f"BOARD:")
     print(f"board.can_white_queen_side_castle: {board.can_white_queen_side_castle}")
@@ -34,6 +35,8 @@ def print_status(board, mg):
     print(f"board.king_square: {board.king_square}")
     print(f"board.en_passant_file: {board.en_passant_file}")
     print(f"board.prev_captured_piece: {board.prev_captured_piece}")
+    print(f"board.num_half_moves: {board.num_half_moves}")
+    print(f"board.num_full_moves: {board.num_full_moves}")
 
     print()
     print(f"MOVE GENERATOR:")
@@ -47,8 +50,27 @@ def print_status(board, mg):
     print(f"mg.opponent_attack_squares: {mg.opponent_attack_squares}")
 
 
+def print_pieces(board):
+    print(f"board.num_pieces: {board.num_pieces}")
+    print("board.piece_count: {")
+    for piece in board.piece_count:
+        print(f"\t{Piece.piece_str(piece)}: {board.piece_count[piece]}")
+    print("}")
+
+
+def print_eval(eval):
+    total = eval.evaluate()
+    white_material = eval.count_material(Color.WHITE)
+    black_material = eval.count_material(Color.BLACK)
+    white_mop_up = eval.mop_up_eval(Color.WHITE, white_material, black_material)
+    black_mop_up = eval.mop_up_eval(Color.BLACK, black_material, white_material)
+    print(f"white_material: {white_material}, white_mop_up: {white_mop_up}")
+    print(f"black_material: {black_material}, black_mop_up: {black_mop_up}")
+    print(f"total: {eval.evaluate()}")
+
+
 def get_computer_move(search):
-    search.start_search()
+    search.iterative_deepening_search(6)
 
     return search.get_search_result()[0]
 
@@ -66,10 +88,14 @@ def is_stalemate(board, moves):
 
 
 if __name__ == "__main__":
-    board = Board()
-    board.board[BoardHelper.E2] = Piece.NONE
-    board.board[BoardHelper.F2] = Piece.NONE
-    board.board[BoardHelper.D2] = Piece.NONE
+    # board = Board()
+    board = Board("3r4/8/3k4/8/8/3K4/8/8 w - - 0 1")
+    # board = Board("7K/4rk2/8/8/8/8/8/8 w - - 2 2")
+    # board = Board("8/8/3KP3/8/8/8/6k1/7q w - - 0 1")
+
+    # board = Board("7k/8/8/2p1p2p/2P1p2P/4P3/8/7K w - - 0 1")
+    # board = Board("8/8/8/2p1p2p/2P1p2k/4P3/6K1/8 w - - 0 9")
+
     mg = MoveGenerator(board)
     eval = Evaluation(board)
     search = Search(board)
@@ -98,7 +124,16 @@ if __name__ == "__main__":
                 continue
 
             if move_str == "EVAL" or move_str == "eval":
-                print(f"eval: {eval.evaluate()}")
+                print_eval(eval)
+                continue
+
+            if move_str == "PIECES" or move_str == "pieces":
+                print_pieces(board)
+                continue
+
+            if move_str == "ZOBRIST" or move_str == "zobrist":
+                print(f"{board.zobrist_key:b}")
+                print(f"{board.zobrist_key}")
                 continue
 
             # parse move
@@ -127,6 +162,9 @@ if __name__ == "__main__":
                 break
 
         valid_moves = mg.generate_moves()
+        search.order_moves(valid_moves)
+        print("\nCOMPUTER VALID MOVES")
+        print([str(move) for move in valid_moves])
         computer_move = get_computer_move(search)
 
         if is_stalemate(board, valid_moves):

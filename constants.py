@@ -58,6 +58,21 @@ class Piece(IntEnum):
 
         return 0
 
+    @staticmethod
+    def piece_str(piece):
+        piece_type_to_str = {
+            Piece.PAWN: "PAWN",
+            Piece.ROOK: "ROOK",
+            Piece.BISHOP: "BISHOP",
+            Piece.KNIGHT: "KNIGHT",
+            Piece.QUEEN: "QUEEN",
+            Piece.KING: "KING"
+        }
+        piece_color = "WHITE" if Color.get_piece_color(piece) == Color.WHITE else "BLACK"
+        piece_type = piece_type_to_str[Piece.get_piece_type(piece)]
+
+        return piece_color + " " + piece_type
+
 
 class BoardHelper(IntEnum):
     A1 = 0

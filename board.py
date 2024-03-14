@@ -2,6 +2,7 @@ from constants import *
 from move import Move
 from bitboard import BitBoard
 from gamestate import GameState
+from zobrist import Zobrist
 
 
 class Board:
@@ -18,7 +19,31 @@ class Board:
         self.friendly_color = Color.WHITE
         self.opponent_color = Color.BLACK
         self.king_square = {Color.WHITE: 0, Color.BLACK: 0}
-        self.en_passant_file = [False for _ in range(8)]
+        self.en_passant_file = -1
+        self.num_pieces = 0
+        self.piece_count = {
+            Color.WHITE | Piece.PAWN: 0,
+            Color.WHITE | Piece.ROOK: 0,
+            Color.WHITE | Piece.BISHOP: 0,
+            Color.WHITE | Piece.KNIGHT: 0,
+            Color.WHITE | Piece.QUEEN: 0,
+            Color.WHITE | Piece.KING: 0,
+            Color.BLACK | Piece.PAWN: 0,
+            Color.BLACK | Piece.ROOK: 0,
+            Color.BLACK | Piece.BISHOP: 0,
+            Color.BLACK | Piece.KNIGHT: 0,
+            Color.BLACK | Piece.QUEEN: 0,
+            Color.BLACK | Piece.KING: 0
+        }
+
+        self.zobrist = Zobrist()
+        self.zobrist_key = 0
+
+        # TODO: add 50 move draw rule
+        self.num_half_moves = 0
+        self.num_full_moves = 0
+
+        # TODO: add 3 fold repetition
 
         # used for recording the game state
         self.prev_captured_piece = Piece.NONE
@@ -39,6 +64,7 @@ class Board:
         move_flag = move.flag
         is_promotion = move.is_promotion
         is_en_passant = move_flag == Move.EN_PASSANT_CAPTURE_FLAG
+        prev_castling_state = self.get_castling_state()
 
         moved_piece = self.board[start_square]
         moved_piece_type = Piece.get_piece_type(moved_piece)
@@ -49,17 +75,28 @@ class Board:
         self.board[target_square] = moved_piece
         self.board[start_square] = Piece.NONE
 
+        self.zobrist_key ^= self.zobrist.get_zobrist_num(moved_piece, start_square)
+        self.zobrist_key ^= self.zobrist.get_zobrist_num(moved_piece, target_square)
+
         # reset en passant files and checks
+        self.zobrist_key ^= self.zobrist.get_zobrist_en_passant(self.en_passant_file)
+
         self.prev_captured_piece = captured_piece
-        self.en_passant_file = [False for _ in range(8)]
+        self.en_passant_file = -1
         self.in_check = False
         self.in_double_check = False
 
         # handle captures
         if captured_piece_type != Piece.NONE:
+            captured_square = target_square
             if is_en_passant:
                 captured_square = target_square + (-8 if self.white_to_move else 8)
                 self.board[captured_square] = Piece.NONE
+
+            self.piece_count[self.opponent_color | captured_piece_type] -= 1
+            self.num_pieces -= 1
+
+            self.zobrist_key ^= self.zobrist.get_zobrist_num(captured_piece, captured_square)
 
         # handle king
         if moved_piece_type == Piece.KING:
@@ -82,6 +119,9 @@ class Board:
                 self.board[rook_target_square] = rook_piece
                 self.board[rook_start_square] = Piece.NONE
 
+                self.zobrist_key ^= self.zobrist.get_zobrist_num(rook_piece, rook_start_square)
+                self.zobrist_key ^= self.zobrist.get_zobrist_num(rook_piece, rook_target_square)
+
         # handle promotion
         if is_promotion:
             promotion_piece = Piece.NONE
@@ -94,11 +134,19 @@ class Board:
             elif move_flag == Move.PROMOTE_TO_KNIGHT_FLAG:
                 promotion_piece = Piece.KNIGHT
 
-            self.board[target_square] = move_color | promotion_piece
+            promotion_piece = move_color | promotion_piece
+            self.board[target_square] = promotion_piece
+            self.piece_count[promotion_piece] += 1
+            self.piece_count[move_color | Piece.PAWN] -= 1
+
+            self.zobrist_key ^= self.zobrist.get_zobrist_num(moved_piece, target_square)
+            self.zobrist_key ^= self.zobrist.get_zobrist_num(promotion_piece, target_square)
 
         # pawn has moved two forwards, mark file with en passant
         if move_flag == Move.PAWN_TWO_UP_FLAG:
-            self.en_passant_file[BoardHelper.get_file(target_square)] = True
+            self.en_passant_file = BoardHelper.get_file(target_square)
+
+            self.zobrist_key ^= self.zobrist.get_zobrist_en_passant(self.en_passant_file)
 
         # update castling rights
         if start_square == BoardHelper.A1 or target_square == BoardHelper.A1:
@@ -110,9 +158,16 @@ class Board:
         elif start_square == BoardHelper.H8 or target_square == BoardHelper.H8:
             self.can_black_king_side_castle = False
 
+        new_castling_state = self.get_castling_state()
+        if prev_castling_state != new_castling_state:
+            self.zobrist_key ^= self.zobrist.get_zobrist_castling_rights(prev_castling_state)
+            self.zobrist_key ^= self.zobrist.get_zobrist_castling_rights(new_castling_state)
+
         # change side to move
         self.white_to_move = not self.white_to_move
         self.friendly_color, self.opponent_color = self.opponent_color, self.friendly_color
+
+        self.zobrist_key ^= self.zobrist.get_zobrist_side_to_move(Color.BLACK)
 
     def unmake_move(self, move):
         # change side to move
@@ -134,6 +189,9 @@ class Board:
 
         # if undoing promotion, remove piece from promotion square and replace with pawn
         if undoing_promotion:
+            self.piece_count[self.board[moved_to]] -= 1
+            self.piece_count[move_color | Piece.PAWN] += 1
+
             self.board[moved_to] = move_color | Piece.PAWN
 
         # move piece
@@ -146,6 +204,7 @@ class Board:
                 capture_square += -8 if self.white_to_move else 8
 
             self.board[capture_square] = self.prev_captured_piece
+            self.piece_count[self.prev_captured_piece] += 1
 
         if moved_piece_type == Piece.KING:
             self.king_square[move_color] = moved_from
@@ -162,6 +221,16 @@ class Board:
         game_state = self.game_state_history.pop()
         self.load_game_state(game_state)
 
+    def get_castling_state(self):
+        """Calculates a 4-bit number representing the current castling state."""
+        castling_state = 0b0000
+        castling_state |= 0b0001 if self.can_white_queen_side_castle else 0b0000
+        castling_state |= 0b0010 if self.can_white_king_side_castle else 0b0000
+        castling_state |= 0b0100 if self.can_black_queen_side_castle else 0b0000
+        castling_state |= 0b1000 if self.can_black_king_side_castle else 0b0000
+
+        return castling_state
+
     def create_game_state(self):
         game_state = GameState()
 
@@ -177,6 +246,10 @@ class Board:
         game_state.prev_captured_piece = self.prev_captured_piece
         game_state.king_square = self.king_square
         game_state.en_passant_file = self.en_passant_file
+        game_state.num_pieces = self.num_pieces
+        game_state.num_half_moves = self.num_half_moves
+        game_state.num_full_moves = self.num_full_moves
+        game_state.zobrist_key = self.zobrist_key
 
         return game_state
 
@@ -193,6 +266,10 @@ class Board:
         self.prev_captured_piece = game_state.prev_captured_piece
         self.king_square = game_state.king_square
         self.en_passant_file = game_state.en_passant_file
+        self.num_pieces = game_state.num_pieces
+        self.num_half_moves = game_state.num_half_moves
+        self.num_full_moves = game_state.num_full_moves
+        self.zobrist_key = game_state.zobrist_key
 
     def create_board(self, fen=START_FEN):
         self.board = [Piece.NONE for _ in range(64)]
@@ -225,6 +302,8 @@ class Board:
                     piece_type = piece_from_symbol[symbol.lower()]
                     square_index = rank * 8 + file
                     self.board[square_index] = piece_color | piece_type
+                    self.piece_count[piece_color | piece_type] += 1
+                    self.num_pieces += 1
                     if piece_type == Piece.KING:
                         self.king_square[piece_color] = square_index
                     file += 1
@@ -238,6 +317,40 @@ class Board:
             self.white_to_move = True
             self.friendly_color = Color.WHITE
             self.opponent_color = Color.BLACK
+
+        # set castling rights
+        if len(fen_info) > 2:
+            fen_castling_str = fen_info[2]
+
+            self.can_white_queen_side_castle = True if 'Q' in fen_castling_str else False
+            self.can_white_king_side_castle = True if 'K' in fen_castling_str else False
+            self.can_black_queen_side_castle = True if 'q' in fen_castling_str else False
+            self.can_black_king_side_castle = True if 'k' in fen_castling_str else False
+
+        # set en passant file
+        if len(fen_info) > 3 and fen_info[3] != '-':
+            fen_en_passant_str = fen_info[3]
+            rank_to_index = {'a': 0, 'b': 1, 'c': 2, 'd': 3, 'e': 4, 'f': 5, 'g': 6, 'h': 7}
+            self.en_passant_file = rank_to_index[fen_en_passant_str[0]]
+
+        # set halfmove clock
+        if len(fen_info) > 4:
+            self.num_half_moves = int(fen_info[4])
+
+        # set fullmove clock
+        if len(fen_info) > 5:
+            self.num_full_moves = int(fen_info[5])
+
+        # set up initial zobrist key
+        for square_index in range(len(self.board)):
+            piece = self.board[square_index]
+            self.zobrist_key ^= self.zobrist.get_zobrist_num(piece, square_index)
+
+        side_to_move = Color.WHITE if self.white_to_move else Color.BLACK
+
+        self.zobrist_key ^= self.zobrist.get_zobrist_en_passant(self.en_passant_file)
+        self.zobrist_key ^= self.zobrist.get_zobrist_side_to_move(side_to_move)
+        self.zobrist_key ^= self.zobrist.get_zobrist_castling_rights(self.get_castling_state())
 
     def __str__(self):
         pieces = {
@@ -306,3 +419,4 @@ class Board:
 if __name__ == "__main__":
     board = Board()
     print(board)
+    print(board.zobrist_key)
