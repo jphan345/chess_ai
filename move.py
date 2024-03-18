@@ -60,5 +60,11 @@ class Move:
 
         return f"Move(start={start_square}, target={target_square}, flag={flags[self.flag]})"
 
+    def __repr__(self):
+        return self.__str__()
+
     def __eq__(self, other):
         return other.value == self.value
+
+    def __hash__(self):
+        return self.value

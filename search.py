@@ -20,57 +20,72 @@ class Search:
         self.transposition_table = TranspositionTable()
         self.repetition_table = set()
 
+        # for move ordering
+        self.move_scores = {}
+        self.ordered_moves = []
+
         self.best_move = None
         self.best_eval = Search.NEGATIVE_INFINITY
+        self.best_move_this_iteration = None
+        self.best_eval_this_iteration = Search.NEGATIVE_INFINITY
 
         # for debugging/testing purposes
         self.positions_evaluated = 0
-
-    def start_search(self, depth=3):
-        self.best_move = None
-        self.best_eval = Search.NEGATIVE_INFINITY
-
-        self.positions_evaluated = 0
-
-        moves = self.move_generator.generate_moves()
-        self.order_moves(moves)
-
-        for move in moves:
-            self.board.make_move(move)
-            evaluation = -1 * self.search(depth - 1, Search.NEGATIVE_INFINITY, Search.POSITIVE_INFINITY)
-            self.board.unmake_move(move)
-
-            if evaluation > self.best_eval:
-                self.best_eval = evaluation
-                self.best_move = move
-
-        # if there is no best move found, pick any move
-        if self.best_move is None:
-            return moves[0]
-
-        return self.best_move
 
     def get_search_result(self):
         return self.best_move, self.best_eval
 
     def iterative_deepening_search(self, max_depth, max_time=2):
+        self.ordered_moves = []
+        self.move_scores = {}
+
+        start_time = time.time()
+        moves = self.move_generator.generate_moves()
         for depth in range(1, max_depth + 1):
-            start_time = time.time()
-            self.start_search(depth)
+            self.best_move = None
+            self.best_eval = Search.NEGATIVE_INFINITY
+
+            if DEBUG:
+                print(f"\ndepth: {depth}")
+
+            self.order_moves(moves, iterative=True)
+
+            for move in moves:
+                self.board.make_move(move)
+                evaluation = -self.negamax_search(depth, Search.NEGATIVE_INFINITY, Search.POSITIVE_INFINITY)
+                self.board.unmake_move(move)
+
+                if DEBUG:
+                    print(move, evaluation)
+
+                self.move_scores[move] = evaluation
+
+                if evaluation > self.best_eval_this_iteration:
+                    self.best_eval_this_iteration = evaluation
+                    self.best_move_this_iteration = move
+
+            self.best_move = self.best_move_this_iteration
+            self.best_eval = self.best_eval_this_iteration
 
             if self.best_eval == Search.POSITIVE_INFINITY:
                 return self.best_move
 
-            elapsed_time = time.time() - start_time
-            if elapsed_time >= max_time:
+            self.best_move_this_iteration = None
+            self.best_eval_this_iteration = Search.NEGATIVE_INFINITY
+
+            time_passed = time.time() - start_time
+            if time_passed > max_time:
                 break
 
         if self.best_move is None:
-            self.best_move = self.move_generator.generate_moves()[0]
+            if self.best_move_this_iteration is None:
+                self.best_move = self.move_generator.generate_moves()[0]
+            else:
+                self.best_move = self.best_move_this_iteration
 
         return self.best_move
 
-    def search(self, depth, alpha, beta):
+    def old_search(self, depth, alpha, beta):
         zobrist_key = self.board.zobrist_key
         tt_entry = self.transposition_table.lookup(zobrist_key)
 
@@ -80,7 +95,50 @@ class Search:
 
         alpha_orig = alpha
         if tt_entry and tt_entry.depth >= depth:
-            # print(tt_entry)
+            if tt_entry.flag == TableEntry.EXACT:
+                return tt_entry.value
+            elif tt_entry.flag == TableEntry.UPPER_BOUND:
+                alpha = max(alpha, tt_entry.value)
+            elif tt_entry.flag == TableEntry.LOWER_BOUND:
+                beta = min(beta, tt_entry.value)
+
+        valid_moves = self.move_generator.generate_moves()
+
+        if self.is_checkmate(valid_moves):
+            return Search.NEGATIVE_INFINITY
+        if self.is_stalemate(valid_moves):
+            return 0
+
+        if depth == 0:
+            return self.quiescence_search(alpha, beta)
+
+        self.order_moves(valid_moves)
+
+        for move in valid_moves:
+            self.board.make_move(move)
+            evaluation = -1 * self.old_search(depth - 1, -beta, -alpha)
+            self.board.unmake_move(move)
+
+            if evaluation >= beta:
+                # if move is too good, opponent won't play the move so disregard it
+                self.transposition_table.store(zobrist_key, depth, beta, TableEntry.LOWER_BOUND)
+                return beta
+
+            alpha = max(alpha, evaluation)
+
+        self.transposition_table.store(zobrist_key, depth, alpha, TableEntry.EXACT)
+        return alpha
+
+    def negamax_search(self, depth, alpha, beta):
+        alpha_orig = alpha
+
+        # TODO: add repetition table to avoid repeated moves
+        if self.board.zobrist_key in self.repetition_table:
+            return 0
+
+        # transposition table lookup
+        tt_entry = self.transposition_table.lookup(self.board.zobrist_key)
+        if tt_entry and tt_entry.depth >= depth:
             if tt_entry.flag == TableEntry.EXACT:
                 return tt_entry.value
             elif tt_entry.flag == TableEntry.LOWER_BOUND:
@@ -91,30 +149,36 @@ class Search:
             if alpha >= beta:
                 return tt_entry.value
 
+        moves = self.move_generator.generate_moves()
+
+        if self.is_checkmate(moves):
+            return Search.NEGATIVE_INFINITY
+        if self.is_stalemate(moves):
+            return 0
+
         if depth == 0:
             return self.quiescence_search(alpha, beta)
 
-        valid_moves = self.move_generator.generate_moves()
-        self.order_moves(valid_moves)
-
-        if self.is_checkmate(valid_moves):
-            return Search.NEGATIVE_INFINITY
-        if self.is_stalemate(valid_moves):
-            return 0
-
-        for move in valid_moves:
+        self.order_moves(moves)
+        evaluation = Search.NEGATIVE_INFINITY
+        for move in moves:
             self.board.make_move(move)
-            evaluation = -1 * self.search(depth - 1, -beta, -alpha)
+            evaluation = -self.negamax_search(depth - 1, -beta, -alpha)
             self.board.unmake_move(move)
 
-            if evaluation >= beta:
-                # if move is too good, opponent won't play the move so disregard it
-                self.transposition_table.store(zobrist_key, depth, beta, TableEntry.LOWER_BOUND)
-                return beta
             alpha = max(alpha, evaluation)
+            if alpha >= beta:
+                break
 
-        self.transposition_table.store(zobrist_key, depth, alpha, TableEntry.EXACT)
-        return alpha
+        # transposition table store
+        if evaluation <= alpha_orig:
+            self.transposition_table.store(self.board.zobrist_key, depth, evaluation, TableEntry.UPPER_BOUND)
+        elif evaluation >= beta:
+            self.transposition_table.store(self.board.zobrist_key, depth, evaluation, TableEntry.LOWER_BOUND)
+        else:
+            self.transposition_table.store(self.board.zobrist_key, depth, evaluation, TableEntry.EXACT)
+
+        return evaluation
 
     # TODO: add checks to quiescence search
     def quiescence_search(self, alpha, beta):
@@ -140,9 +204,15 @@ class Search:
 
         return alpha
 
-    def order_moves(self, moves):
+    def order_moves(self, moves, iterative=False):
         # order moves from high move score to low
-        moves.sort(key=self.get_move_score, reverse=True)
+        if not iterative or len(self.move_scores) == 0:
+            moves.sort(key=self.get_move_score, reverse=True)
+        else:
+            moves.sort(key=lambda x: (self.move_scores[x], -self.ordered_moves.index(x)), reverse=True)
+
+        if iterative:
+            self.ordered_moves = moves[:]
 
     def get_move_score(self, move):
         move_score = 0

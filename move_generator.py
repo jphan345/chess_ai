@@ -347,6 +347,8 @@ class MoveGenerator:
     def calculate_attack_data(self):
         directions = MoveGenerator.ORTHOGONAL_DIRECTIONS + MoveGenerator.DIAGONAL_DIRECTIONS
         king_square = self.board.king_square[self.friendly_color]
+
+        # calculate rays from the king to the edge to see if a piece is pinned/king is under check
         for offset in directions:
             n = self.num_squares_to_edge(king_square, offset)
             is_friendly_piece_along_ray = False
@@ -413,6 +415,9 @@ class MoveGenerator:
                     self.opponent_attack_squares.add(move.target_square)
                     # if the opponent piece can capture the king as a move, we are in check
                     if move.target_square == king_square:
+                        self.check_squares.add(square)
+                        self.check_squares.add(move.target_square)
+
                         self.in_double_check = self.in_check
                         self.in_check = True
                         self.board.in_check = self.in_check
@@ -456,6 +461,15 @@ class MoveGenerator:
                     target_square = square + offset
                     self.opponent_attack_squares.add(target_square)
                     self.opponent_pawn_attack_squares.add(target_square)
+
+                    if target_square == self.board.king_square[self.friendly_color]:
+                        self.check_squares.add(square)
+                        self.check_squares.add(target_square)
+
+                        self.in_double_check = self.in_check
+                        self.in_check = True
+                        self.board.in_check = self.in_check
+                        self.board.in_double_check = self.in_double_check
 
             # calculate blocked squares from opponent's king
             if piece_type == Piece.KING and piece_color == self.opponent_color:

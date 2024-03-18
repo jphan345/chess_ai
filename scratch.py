@@ -88,8 +88,8 @@ def is_stalemate(board, moves):
 
 
 if __name__ == "__main__":
-    # board = Board()
-    board = Board("3r4/8/3k4/8/8/3K4/8/8 w - - 0 1")
+    board = Board()
+    # board = Board("3r4/8/3k4/8/8/3K4/8/8 w - - 0 1")
     # board = Board("7K/4rk2/8/8/8/8/8/8 w - - 2 2")
     # board = Board("8/8/3KP3/8/8/8/6k1/7q w - - 0 1")
 
@@ -101,8 +101,8 @@ if __name__ == "__main__":
     search = Search(board)
     move_stack = []
 
+    BOT = True
     while True:
-
         print(board)
         valid_moves = mg.generate_moves()
         print(f"moves: {[str(m) for m in valid_moves]}")
@@ -117,24 +117,24 @@ if __name__ == "__main__":
             break
 
         while True:
-            move_str = input("Make your move: ")
+            move_str = input("Make your move: ").lower()
 
-            if move_str == "STATUS" or move_str == "status":
+            if move_str == "status":
                 print_status(board, mg)
                 continue
-
-            if move_str == "EVAL" or move_str == "eval":
+            if move_str == "eval":
                 print_eval(eval)
                 continue
-
-            if move_str == "PIECES" or move_str == "pieces":
+            if move_str == "pieces":
                 print_pieces(board)
                 continue
-
-            if move_str == "ZOBRIST" or move_str == "zobrist":
+            if move_str == "zobrist":
                 print(f"{board.zobrist_key:b}")
                 print(f"{board.zobrist_key}")
                 continue
+            if move_str == "undo" or move_str == "unmake":
+                if len(move_stack) != 0:
+                    board.unmake_move(move_stack.pop())
 
             # parse move
             ranks = {'a': 0, 'b': 1, 'c': 2, 'd': 3, 'e': 4, 'f': 5, 'g': 6, 'h': 7}
@@ -161,17 +161,18 @@ if __name__ == "__main__":
                 move_stack.append(move)
                 break
 
-        valid_moves = mg.generate_moves()
-        search.order_moves(valid_moves)
-        print("\nCOMPUTER VALID MOVES")
-        print([str(move) for move in valid_moves])
-        computer_move = get_computer_move(search)
+        if BOT:
+            valid_moves = mg.generate_moves()
+            search.order_moves(valid_moves)
+            print("\nCOMPUTER VALID MOVES")
+            print([str(move) for move in valid_moves])
+            computer_move = get_computer_move(search)
 
-        if is_stalemate(board, valid_moves):
-            print("STALEMATE")
-            break
-        elif is_checkmate(board, valid_moves):
-            print("CHECKMATE")
-            break
+            if is_stalemate(board, valid_moves):
+                print("STALEMATE")
+                break
+            elif is_checkmate(board, valid_moves):
+                print("CHECKMATE")
+                break
 
-        board.make_move(computer_move)
+            board.make_move(computer_move)

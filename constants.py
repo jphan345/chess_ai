@@ -3,6 +3,9 @@
 from enum import IntEnum
 
 
+DEBUG = False
+
+
 class Color(IntEnum):
     # pieces and colors and be bitwise-or together
     # first 2 bits are the color
