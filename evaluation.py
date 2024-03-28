@@ -240,7 +240,7 @@ class Evaluation:
         pieces_eval = (mg_eval * mg_phase + eg_eval * eg_phase) / 24
 
         evaluation = pieces_eval + mop_up_eval
-        evaluation = evaluation if self.board.white_to_move else -evaluation
+        evaluation = evaluation if self.board.game_state.white_to_move else -evaluation
 
         return evaluation
 
@@ -273,8 +273,8 @@ class Evaluation:
 
         if friendly_material > enemy_material + Piece.PAWN_VALUE * 2 and endgame_transition > 0:
             score = 0
-            friendly_king_square = self.board.king_square[color]
-            enemy_king_square = self.board.king_square[enemy_color]
+            friendly_king_square = self.board.game_state.king_square[color]
+            enemy_king_square = self.board.game_state.king_square[enemy_color]
 
             # encourage pushing enemy king to edge
             enemy_king_rank = BoardHelper.get_rank(enemy_king_square)

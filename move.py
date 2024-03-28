@@ -44,6 +44,13 @@ class Move:
         self.promotion_piece_type = promotion_pieces[self.flag] if self.is_promotion else Piece.NONE
 
     def __str__(self):
+        files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+        start_square = files[BoardHelper.get_file(self.start_square)] + str(BoardHelper.get_rank(self.start_square) + 1)
+        target_square = files[BoardHelper.get_file(self.target_square)] + str(BoardHelper.get_rank(self.target_square) + 1)
+
+        return f"{start_square}{target_square}"
+
+    def __repr__(self):
         flags = {
             Move.EN_PASSANT_CAPTURE_FLAG: "EN_PASSANT_CAPTURE_FLAG",
             Move.CASTLE_FLAG: "CASTLE_FLAG",
@@ -56,12 +63,10 @@ class Move:
         }
         files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
         start_square = files[BoardHelper.get_file(self.start_square)] + str(BoardHelper.get_rank(self.start_square) + 1)
-        target_square = files[BoardHelper.get_file(self.target_square)] + str(BoardHelper.get_rank(self.target_square) + 1)
+        target_square = files[BoardHelper.get_file(self.target_square)] + str(
+            BoardHelper.get_rank(self.target_square) + 1)
 
         return f"Move(start={start_square}, target={target_square}, flag={flags[self.flag]})"
-
-    def __repr__(self):
-        return self.__str__()
 
     def __eq__(self, other):
         return other.value == self.value

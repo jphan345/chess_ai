@@ -10,12 +10,12 @@ class MoveGenerator:
     def __init__(self, board):
         self.board = board
 
-        self.white_to_move = board.white_to_move
-        self.friendly_color = board.friendly_color
-        self.opponent_color = board.opponent_color
+        self.white_to_move = board.game_state.white_to_move
+        self.friendly_color = board.game_state.friendly_color
+        self.opponent_color = board.game_state.opponent_color
 
-        self.in_check = self.board.in_check
-        self.in_double_check = self.board.in_double_check
+        self.in_check = self.board.game_state.in_check
+        self.in_double_check = self.board.game_state.in_double_check
 
         self.pin_rays = []
         self.check_squares = set()
@@ -27,9 +27,9 @@ class MoveGenerator:
     def generate_moves(self, captures_only=False):
         """Generates a list of legal moves in the current position.
         Non capture moves can be excluded for quiescence search."""
-        self.white_to_move = self.board.white_to_move
-        self.friendly_color = self.board.friendly_color
-        self.opponent_color = self.board.opponent_color
+        self.white_to_move = self.board.game_state.white_to_move
+        self.friendly_color = self.board.game_state.friendly_color
+        self.opponent_color = self.board.game_state.opponent_color
 
         # set these values to false because self.calculate_attack_data calculates it
         self.in_check = False
@@ -43,7 +43,7 @@ class MoveGenerator:
 
         moves = []
 
-        king_square = self.board.king_square[self.friendly_color]
+        king_square = self.board.game_state.king_square[self.friendly_color]
         king_piece = self.board.board[king_square]
         moves += self.generate_king_moves(king_square, king_piece, captures_only=captures_only)
 
@@ -93,8 +93,8 @@ class MoveGenerator:
             return moves
 
         if self.friendly_color == Color.WHITE:
-            can_white_king_side_castle = self.board.can_white_king_side_castle
-            can_white_queen_side_castle = self.board.can_white_queen_side_castle
+            can_white_king_side_castle = self.board.game_state.can_white_king_side_castle
+            can_white_queen_side_castle = self.board.game_state.can_white_queen_side_castle
 
             # king cannot castle if he has to cross through an attacked square
             for square in [BoardHelper.F1, BoardHelper.G1]:
@@ -127,8 +127,8 @@ class MoveGenerator:
                     moves.append(Move(start_square, BoardHelper.C1, flag=Move.CASTLE_FLAG))
 
         else:
-            can_black_king_side_castle = self.board.can_black_king_side_castle
-            can_black_queen_side_castle = self.board.can_black_queen_side_castle
+            can_black_king_side_castle = self.board.game_state.can_black_king_side_castle
+            can_black_queen_side_castle = self.board.game_state.can_black_queen_side_castle
 
             # king cannot castle if he has to cross through an attacked square
             for square in [BoardHelper.F8, BoardHelper.G8]:
@@ -190,9 +190,9 @@ class MoveGenerator:
 
         # calculate forward moves
         if not captures_only:
-            forward_offsets = [pawn_direction, pawn_direction * 2] if rank == pawn_starting_rank else [pawn_direction]
-            for offset in forward_offsets:
-                target_square = start_square + offset
+            # calculate moving forward by 1 square
+            target_square = start_square + pawn_direction
+            if 0 <= target_square <= 63:
                 target_piece = self.board.board[target_square]
                 target_piece_type = Piece.get_piece_type(target_piece)
 
@@ -201,8 +201,19 @@ class MoveGenerator:
                     if BoardHelper.get_rank(target_square) == pawn_promotion_rank:
                         moves += self.generate_pawn_promotions(start_square, target_square, captures_only=captures_only)
                     else:
-                        flag = Move.NO_FLAG if offset == pawn_direction else Move.PAWN_TWO_UP_FLAG
-                        moves.append(Move(start_square, target_square, flag=flag))
+                        moves.append(Move(start_square, target_square, flag=Move.NO_FLAG))
+
+            # calculate moving forward by 2 squares
+            if rank == pawn_starting_rank:
+                target_square = start_square + (pawn_direction * 2)
+                if 0 <= target_square <= 63:
+                    target_piece = self.board.board[target_square]
+                    target_piece_type = Piece.get_piece_type(target_piece)
+                    inbetween_piece = self.board.board[start_square + pawn_direction]
+                    inbetween_piece_type = Piece.get_piece_type(inbetween_piece)
+
+                    if target_piece_type == Piece.NONE and inbetween_piece_type == Piece.NONE:
+                        moves.append(Move(start_square, target_square, flag=Move.PAWN_TWO_UP_FLAG))
 
         # calculate attacking moves
         pawn_attacking_directions = [Offset.TOP_LEFT, Offset.TOP_RIGHT] if piece_color == Color.WHITE \
@@ -214,23 +225,24 @@ class MoveGenerator:
 
         for offset in pawn_attacking_directions:
             target_square = start_square + offset
-            target_piece = self.board.board[target_square]
-            target_piece_type = Piece.get_piece_type(target_piece)
-            target_piece_color = Color.get_piece_color(target_piece)
+            if 0 <= target_square <= 63:
+                target_piece = self.board.board[target_square]
+                target_piece_type = Piece.get_piece_type(target_piece)
+                target_piece_color = Color.get_piece_color(target_piece)
 
-            if target_piece_type != Piece.NONE and target_piece_color == self.opponent_color:
-                # calculate promotion moves
-                if BoardHelper.get_rank(target_square) == pawn_promotion_rank:
-                    moves += self.generate_pawn_promotions(start_square, target_square, captures_only=captures_only)
-                else:
-                    moves.append(Move(start_square, target_square))
+                if target_piece_type != Piece.NONE and target_piece_color == self.opponent_color:
+                    # calculate promotion moves
+                    if BoardHelper.get_rank(target_square) == pawn_promotion_rank:
+                        moves += self.generate_pawn_promotions(start_square, target_square, captures_only=captures_only)
+                    else:
+                        moves.append(Move(start_square, target_square))
 
         # calculate en passant moves
-        en_passant_offsets = [Offset.LEFT, Offset.RIGHT]
-        if is_on_left_edge:
-            en_passant_offsets = [Offset.RIGHT]
-        elif is_on_right_edge:
-            en_passant_offsets = [Offset.LEFT]
+        en_passant_offsets = []
+        if not is_on_left_edge:
+            en_passant_offsets.append(Offset.LEFT)
+        if not is_on_right_edge:
+            en_passant_offsets.append(Offset.RIGHT)
 
         for offset in en_passant_offsets:
             check_square = start_square + offset
@@ -239,13 +251,13 @@ class MoveGenerator:
             check_piece_type = Piece.get_piece_type(check_piece)
             check_piece_color = Color.get_piece_color(check_piece)
 
-            if self.board.en_passant_file == check_file and check_piece_type != Piece.NONE and \
+            if self.board.game_state.en_passant_file == check_file and check_piece_type == Piece.PAWN and \
                     check_piece_color == self.opponent_color:
                 on_passant_offset = 0
                 if offset == Offset.LEFT:
                     on_passant_offset = Offset.TOP_LEFT if self.friendly_color == Color.WHITE else Offset.BOTTOM_LEFT
                 elif offset == Offset.RIGHT:
-                    on_passant_offset = Offset.TOP_RIGHT if self.friendly_color == Color.BLACK else Offset.BOTTOM_RIGHT
+                    on_passant_offset = Offset.TOP_RIGHT if self.friendly_color == Color.WHITE else Offset.BOTTOM_RIGHT
                 target_square = start_square + on_passant_offset
 
                 if not self.in_check_after_en_passant(start_square, target_square, check_square):
@@ -346,7 +358,7 @@ class MoveGenerator:
 
     def calculate_attack_data(self):
         directions = MoveGenerator.ORTHOGONAL_DIRECTIONS + MoveGenerator.DIAGONAL_DIRECTIONS
-        king_square = self.board.king_square[self.friendly_color]
+        king_square = self.board.game_state.king_square[self.friendly_color]
 
         # calculate rays from the king to the edge to see if a piece is pinned/king is under check
         for offset in directions:
@@ -388,8 +400,8 @@ class MoveGenerator:
 
                                     self.in_double_check = self.in_check
                                     self.in_check = True
-                                    self.board.in_check = self.in_check
-                                    self.board.in_double_check = self.in_double_check
+                                    self.board.game_state.in_check = self.in_check
+                                    self.board.game_state.in_double_check = self.in_double_check
                                 break
                             else:
                                 # if the enemy piece isn't a rook, bishop, or queen, there are no rays to calculate
@@ -420,8 +432,8 @@ class MoveGenerator:
 
                         self.in_double_check = self.in_check
                         self.in_check = True
-                        self.board.in_check = self.in_check
-                        self.board.in_double_check = self.in_double_check
+                        self.board.game_state.in_check = self.in_check
+                        self.board.game_state.in_double_check = self.in_double_check
 
             if piece_type in [Piece.ROOK, Piece.BISHOP, Piece.QUEEN] and piece_color == self.opponent_color:
                 directions = MoveGenerator.DIAGONAL_DIRECTIONS + MoveGenerator.ORTHOGONAL_DIRECTIONS
@@ -462,18 +474,18 @@ class MoveGenerator:
                     self.opponent_attack_squares.add(target_square)
                     self.opponent_pawn_attack_squares.add(target_square)
 
-                    if target_square == self.board.king_square[self.friendly_color]:
+                    if target_square == self.board.game_state.king_square[self.friendly_color]:
                         self.check_squares.add(square)
                         self.check_squares.add(target_square)
 
                         self.in_double_check = self.in_check
                         self.in_check = True
-                        self.board.in_check = self.in_check
-                        self.board.in_double_check = self.in_double_check
+                        self.board.game_state.in_check = self.in_check
+                        self.board.game_state.in_double_check = self.in_double_check
 
             # calculate blocked squares from opponent's king
             if piece_type == Piece.KING and piece_color == self.opponent_color:
-                opponent_king_square = self.board.king_square[self.opponent_color]
+                opponent_king_square = self.board.game_state.king_square[self.opponent_color]
                 file = BoardHelper.get_file(opponent_king_square)
                 king_offsets = [Offset.LEFT, Offset.TOP_LEFT, Offset.BOTTOM_LEFT, Offset.DOWN, Offset.UP, Offset.RIGHT,
                                 Offset.BOTTOM_RIGHT, Offset.TOP_RIGHT]
@@ -489,7 +501,7 @@ class MoveGenerator:
                         self.opponent_attack_squares.add(target_square)
 
     def in_check_after_en_passant(self, start_square, target_square, check_square):
-        king_square = self.board.king_square[self.friendly_color]
+        king_square = self.board.game_state.king_square[self.friendly_color]
         king_rank = BoardHelper.get_rank(king_square)
         king_file = BoardHelper.get_file(king_square)
         rank = BoardHelper.get_rank(start_square)
@@ -571,7 +583,7 @@ if __name__ == "__main__":
     board = Board()
     board.board[37] = Piece.KING | Color.WHITE
     board.board[43] = Piece.PAWN | Color.BLACK
-    board.king_square[Color.WHITE] = 37
+    board.game_state.king_square[Color.WHITE] = 37
     board.in_check = True
 
     board.print_indexes()

@@ -3,7 +3,7 @@
 from enum import IntEnum
 
 
-DEBUG = False
+DEBUG = True
 
 
 class Color(IntEnum):

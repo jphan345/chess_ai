@@ -23,20 +23,20 @@ def print_move(move):
 
 def print_status(board, mg):
     print(f"BOARD:")
-    print(f"board.can_white_queen_side_castle: {board.can_white_queen_side_castle}")
-    print(f"board.can_white_king_side_castle: {board.can_white_king_side_castle}")
-    print(f"board.can_black_queen_side_castle: {board.can_black_queen_side_castle}")
-    print(f"board.can_black_king_side_castle: {board.can_black_king_side_castle}")
-    print(f"board.in_check: {board.in_check}")
-    print(f"board.in_double_check: {board.in_double_check}")
-    print(f"board.white_to_move: {board.white_to_move}")
-    print(f"board.friendly_color: {board.friendly_color}")
-    print(f"board.opponent_color: {board.opponent_color}")
-    print(f"board.king_square: {board.king_square}")
-    print(f"board.en_passant_file: {board.en_passant_file}")
-    print(f"board.prev_captured_piece: {board.prev_captured_piece}")
-    print(f"board.num_half_moves: {board.num_half_moves}")
-    print(f"board.num_full_moves: {board.num_full_moves}")
+    print(f"board.game_state.can_white_queen_side_castle: {board.game_state.can_white_queen_side_castle}")
+    print(f"board.game_state.can_white_king_side_castle: {board.game_state.can_white_king_side_castle}")
+    print(f"board.game_state.can_black_queen_side_castle: {board.game_state.can_black_queen_side_castle}")
+    print(f"board.game_state.can_black_king_side_castle: {board.game_state.can_black_king_side_castle}")
+    print(f"board.game_state.in_check: {board.game_state.in_check}")
+    print(f"board.game_state.in_double_check: {board.game_state.in_double_check}")
+    print(f"board.game_state.white_to_move: {board.game_state.white_to_move}")
+    print(f"board.game_state.friendly_color: {board.game_state.friendly_color}")
+    print(f"board.game_state.opponent_color: {board.game_state.opponent_color}")
+    print(f"board.game_state.king_square: {board.game_state.king_square}")
+    print(f"board.game_state.en_passant_file: {board.game_state.en_passant_file}")
+    print(f"board.game_state.prev_captured_piece: {board.game_state.prev_captured_piece}")
+    print(f"board.game_state.num_half_moves: {board.game_state.num_half_moves}")
+    print(f"board.game_state.num_full_moves: {board.game_state.num_full_moves}")
 
     print()
     print(f"MOVE GENERATOR:")
@@ -51,7 +51,7 @@ def print_status(board, mg):
 
 
 def print_pieces(board):
-    print(f"board.num_pieces: {board.num_pieces}")
+    print(f"board.game_state.num_pieces: {board.game_state.num_pieces}")
     print("board.piece_count: {")
     for piece in board.piece_count:
         print(f"\t{Piece.piece_str(piece)}: {board.piece_count[piece]}")
@@ -76,25 +76,26 @@ def get_computer_move(search):
 
 
 def is_checkmate(board, moves):
-    if board.in_check and len(moves) == 0:
+    if board.game_state.in_check and len(moves) == 0:
         return True
     return False
 
 
 def is_stalemate(board, moves):
-    if not board.in_check and len(moves) == 0:
+    if not board.game_state.in_check and len(moves) == 0:
         return True
     return False
 
 
 if __name__ == "__main__":
-    board = Board()
+    # board = Board()
     # board = Board("3r4/8/3k4/8/8/3K4/8/8 w - - 0 1")
     # board = Board("7K/4rk2/8/8/8/8/8/8 w - - 2 2")
     # board = Board("8/8/3KP3/8/8/8/6k1/7q w - - 0 1")
 
     # board = Board("7k/8/8/2p1p2p/2P1p2P/4P3/8/7K w - - 0 1")
     # board = Board("8/8/8/2p1p2p/2P1p2k/4P3/6K1/8 w - - 0 9")
+    board = Board("r2qkb1r/ppp1pppp/2np1n2/8/3PP1b1/2N2N2/PPP2PPP/R1BQKB1R w KQkq - 0 1")
 
     mg = MoveGenerator(board)
     eval = Evaluation(board)
@@ -129,8 +130,8 @@ if __name__ == "__main__":
                 print_pieces(board)
                 continue
             if move_str == "zobrist":
-                print(f"{board.zobrist_key:b}")
-                print(f"{board.zobrist_key}")
+                print(f"{board.game_state.zobrist_key:b}")
+                print(f"{board.game_state.zobrist_key}")
                 continue
             if move_str == "undo" or move_str == "unmake":
                 if len(move_stack) != 0:
@@ -153,7 +154,7 @@ if __name__ == "__main__":
             start_str, target_str = s[0], s[1]
             start_square = ranks[start_str[0]] + ((int(start_str[1]) - 1) * 8)
             target_square = ranks[target_str[0]] + ((int(target_str[1]) - 1) * 8)
-            flag = Move.NO_FLAG if len(s) == 2 else flags[s[2]]
+            flag = Move.NO_FLAG if len(s) == 2 else flags[s[2].upper()]
 
             move = Move(start_square, target_square, flag=flag)
             if move in valid_moves:
@@ -161,11 +162,14 @@ if __name__ == "__main__":
                 move_stack.append(move)
                 break
 
+        print(board)
+
         if BOT:
             valid_moves = mg.generate_moves()
             search.order_moves(valid_moves)
             print("\nCOMPUTER VALID MOVES")
-            print([str(move) for move in valid_moves])
+            print([repr(move) for move in valid_moves])
+            print(sorted(str(move) for move in valid_moves))
             computer_move = get_computer_move(search)
 
             if is_stalemate(board, valid_moves):
